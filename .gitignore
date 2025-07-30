@@ -1,0 +1,5 @@
+#JetBrains Rider IDE
+/.idea
+/bin
+/obj
+/.DS_Store
