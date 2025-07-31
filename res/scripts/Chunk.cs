@@ -6,13 +6,20 @@ namespace Voxel_Game.res.scripts
     public class Chunk
     {
         public const int ChunkSize = 16;
+        
         private readonly byte[,,] _blocks;
+        
         private int _vertexBufferObject;
         private int _vertexArrayObject;
         private int _elementBufferObject;
+        
         private int _vertexCount;
+        
         private readonly Vector3 _position;
         private readonly Shader _shader;
+        
+        private float[] _vertices;
+        private uint[] _indices;
 
         public Chunk(Vector3 position, Shader shader)
         {
@@ -50,45 +57,33 @@ namespace Voxel_Game.res.scripts
                 {
                     for (int z = 0; z < ChunkSize; z++)
                     {
-                        if (_blocks[x, y, z] == 0) continue;
+                        if (_blocks[x, y, z] == 0) continue; //Skip if block is Air
 
                         Vector3 blockPos = new Vector3(x, y, z);
 
-                        // Front face (z + 1)
-                        if (IsTransparent(x, y, z + 1))
-                        {
+                        // Front face
+                        if (BlockIsTransparent(x, y, z + 1))
                             AddFace(vertices, indices, blockPos, new Vector3(0, 0, 1), ref index);
-                        }
 
-                        // Back face (z - 1)
-                        if (IsTransparent(x, y, z - 1))
-                        {
+                        // Back face
+                        if (BlockIsTransparent(x, y, z - 1))
                             AddFace(vertices, indices, blockPos, new Vector3(0, 0, -1), ref index);
-                        }
 
-                        // Top face (y + 1)
-                        if (IsTransparent(x, y + 1, z))
-                        {
+                        // Top face
+                        if (BlockIsTransparent(x, y + 1, z))
                             AddFace(vertices, indices, blockPos, new Vector3(0, 1, 0), ref index);
-                        }
 
-                        // Bottom face (y - 1)
-                        if (IsTransparent(x, y - 1, z))
-                        {
+                        // Bottom face
+                        if (BlockIsTransparent(x, y - 1, z))
                             AddFace(vertices, indices, blockPos, new Vector3(0, -1, 0), ref index);
-                        }
 
-                        // Left face (x - 1)
-                        if (IsTransparent(x - 1, y, z))
-                        {
+                        // Left face
+                        if (BlockIsTransparent(x - 1, y, z))
                             AddFace(vertices, indices, blockPos, new Vector3(-1, 0, 0), ref index);
-                        }
 
-                        // Right face (x + 1)
-                        if (IsTransparent(x + 1, y, z))
-                        {
+                        // Right face
+                        if (BlockIsTransparent(x + 1, y, z))
                             AddFace(vertices, indices, blockPos, new Vector3(1, 0, 0), ref index);
-                        }
                     }
                 }
             }
@@ -98,10 +93,11 @@ namespace Voxel_Game.res.scripts
             _vertexCount = indices.Count;
         }
 
-        private bool IsTransparent(int x, int y, int z)
+        private bool BlockIsTransparent(int x, int y, int z)
         {
             if (x < 0 || x >= ChunkSize || y < 0 || y >= ChunkSize || z < 0 || z >= ChunkSize)
                 return true;
+            
             return _blocks[x, y, z] == 0;
         }
 
@@ -183,8 +179,7 @@ namespace Voxel_Game.res.scripts
             GL.BufferSubData(BufferTarget.ArrayBuffer, 0, _vertices.Length * sizeof(float), _vertices);
 
             GL.BindBuffer(BufferTarget.ElementArrayBuffer, _elementBufferObject);
-            GL.BufferData(BufferTarget.ElementArrayBuffer, _indices.Length * sizeof(uint), _indices,
-                BufferUsageHint.StaticDraw);
+            GL.BufferData(BufferTarget.ElementArrayBuffer, _indices.Length * sizeof(uint), _indices, BufferUsageHint.StaticDraw);
 
             GL.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 6 * sizeof(float), 0);
             GL.EnableVertexAttribArray(0);
@@ -210,8 +205,5 @@ namespace Voxel_Game.res.scripts
             GL.DeleteBuffer(_elementBufferObject);
             GL.DeleteVertexArray(_vertexArrayObject);
         }
-
-        private float[] _vertices;
-        private uint[] _indices;
     }
 }

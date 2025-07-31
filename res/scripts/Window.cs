@@ -9,10 +9,10 @@ namespace Voxel_Game.res.scripts
     public class Window : GameWindow
     {
         //Const
-        private const float Fov = 120.0f;
+        private const float Fov = 90.0f;
         
         //Camera Variables
-        private Vector3 _cameraPos = new Vector3(2.0f, 2.0f, 2.0f);
+        private Vector3 _cameraPos = new Vector3(0.0f, 15.0f, 0.0f);
         private Vector3 _cameraFront = new Vector3(0.0f, 0.0f, -1.0f);
         readonly Vector3 _cameraUp = new Vector3(0.0f, 1.0f, 0.0f);
         private float _cameraSpeed = 10.0f;
@@ -143,7 +143,7 @@ namespace Voxel_Game.res.scripts
         {
             base.OnFramebufferResize(e);
             GL.Viewport(0, 0, e.Width, e.Height);
-            _projection = Matrix4.CreatePerspectiveFieldOfView(MathHelper.DegreesToRadians(Fov), e.Width / (float)e.Height, 0.1f, 100.0f);
+            _projection = Matrix4.CreatePerspectiveFieldOfView(MathHelper.DegreesToRadians(Fov), e.Width / (float)e.Height, 0.1f, 200.0f);
             _shader.SetMatrix4("projection", _projection);
         }
 
