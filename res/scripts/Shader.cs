@@ -82,10 +82,16 @@ namespace Voxel_Game.res.scripts
             }
         }
         
+        //Uniform Setter
         public void SetMatrix4(string name, Matrix4 matrix)
         {
             int location = GL.GetUniformLocation(_program, name);
             GL.UniformMatrix4(location, false, ref matrix);
+        }
+        public void SetInt(string name, int integer)
+        {
+            int location = GL.GetUniformLocation(_program, name);
+            GL.Uniform1(location, integer);
         }
 
         public void Dispose()
