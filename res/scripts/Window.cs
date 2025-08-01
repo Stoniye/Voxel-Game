@@ -45,17 +45,58 @@ namespace Voxel_Game.res.scripts
             _shader = new Shader("../../../res/shaders/shader.vert", "../../../res/shaders/shader.frag");
             _shader.Use();
             
-            for (int x = -1; x <= 1; x++)
-            {
-                for (int z = -1; z <= 1; z++)
-                {
-                    Vector3 chunkPos = new Vector3(x * Chunk.ChunkSize, 0, z * Chunk.ChunkSize);
-                    _chunks.Add(new Vector2i(x, z), new Chunk(chunkPos, _shader));
-                }
-            }
+            GenerateWorld();
 
             _projection = Matrix4.CreatePerspectiveFieldOfView(MathHelper.DegreesToRadians(Fov), Size.X / (float)Size.Y, 0.1f, 100.0f);
             _shader.SetMatrix4("projection", _projection);
+        }
+
+        private void GenerateWorld()
+        {
+            const int chunksX = 3;
+            const int chunksZ = 3;
+            
+            //Generate Chunks
+            for (int x = 0; x <= chunksX; x++)
+            {
+                for (int z = 0; z <= chunksZ; z++)
+                {
+                    Vector3 chunkPos = new Vector3(x * Chunk.ChunkSize, 0, z * Chunk.ChunkSize);
+                    Chunk newChunk = new Chunk(chunkPos, _shader);
+                    _chunks.Add(new Vector2i(x, z), newChunk);
+                }
+            }
+            
+            //Assign Chunk neighbors
+            for (int x = 0; x <= chunksX; x++)
+            {
+                for (int z = 0; z <= chunksZ; z++)
+                {
+                    Chunk currentChunk = _chunks[new Vector2i(x, z)];
+                    Vector2i[] neighborOffsets = new Vector2i[]
+                    {
+                        new Vector2i(0, 1),
+                        new Vector2i(0, -1),
+                        new Vector2i(-1, 0),
+                        new Vector2i(1, 0)
+                    };
+
+                    foreach (Vector2i offset in neighborOffsets)
+                    {
+                        Vector2i neighborCoord = new Vector2i(x + offset.X, z + offset.Y);
+                        
+                        if (_chunks.TryGetValue(neighborCoord, out Chunk? neighborChunk))
+                        {
+                            if (neighborChunk != currentChunk)
+                            {
+                                currentChunk.SetNeighbor(offset, neighborChunk);
+                            }
+                        }
+                    }
+                    
+                    currentChunk.ReloadChunk();
+                }
+            }
         }
         
         protected override void OnRenderFrame(FrameEventArgs e)

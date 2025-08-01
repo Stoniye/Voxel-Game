@@ -7,6 +7,8 @@ namespace Voxel_Game.res.scripts
     {
         public const int ChunkSize = 16;
         
+        public readonly Dictionary<Vector2i, Chunk> _neighbors;
+        
         private readonly byte[,,] _blocks;
         
         private int _vertexBufferObject;
@@ -22,15 +24,14 @@ namespace Voxel_Game.res.scripts
         private float[] _vertices;
         private uint[] _indices;
 
-        public Chunk(Vector3 position, Shader shader)
+        public Chunk(Vector3 position, Shader shader, Dictionary<Vector2i, Chunk>? neighbors = null)
         {
             _position = position;
             _shader = shader;
             _blocks = new byte[ChunkSize, ChunkSize, ChunkSize];
+            _neighbors = neighbors ?? new Dictionary<Vector2i, Chunk>();
             InitializeBlocks();
             LoadTexture();
-            GenerateMesh();
-            SetupBuffers();
         }
 
         private void InitializeBlocks()
@@ -43,10 +44,8 @@ namespace Voxel_Game.res.scripts
                     {
                         if (y == 15)
                             _blocks[x, y, z] = 1; //Grass
-                        else if (y < 15)
-                            _blocks[x, y, z] = 2; //Dirt
                         else
-                            _blocks[x, y, z] = 0; //Air
+                            _blocks[x, y, z] = 2; //Dirt
                     }
                 }
             }
@@ -141,7 +140,10 @@ namespace Voxel_Game.res.scripts
             _indices = indices.ToArray();
             _vertexCount = indices.Count;
         }
-
+        public void SetNeighbor(Vector2i relativePosition, Chunk neighbor)
+        {
+            _neighbors[relativePosition] = neighbor;
+        }
         private Vector2[] GetTextureCoords(byte blockType)
         {
             int atlasSize = 16;
@@ -165,10 +167,38 @@ namespace Voxel_Game.res.scripts
 
         private bool BlockIsTransparent(int x, int y, int z)
         {
-            if (x < 0 || x >= ChunkSize || y < 0 || y >= ChunkSize || z < 0 || z >= ChunkSize)
-                return true;
+            //Check if block in Chunk
+            if (x >= 0 && x < ChunkSize && y >= 0 && y < ChunkSize && z >= 0 && z < ChunkSize)
+            {
+                return _blocks[x, y, z] == 0;
+            }
             
-            return _blocks[x, y, z] == 0;
+            //Block in other Chunk
+            Vector2i dir = new Vector2i(
+                x >= ChunkSize ? 1 : x < 0 ? -1 : 0,
+                z >= ChunkSize ? 1 : z < 0 ? -1 : 0
+            );
+            Vector3 newBlockPos = new Vector3(
+                (x % ChunkSize + ChunkSize) % ChunkSize,
+                (y % ChunkSize + ChunkSize) % ChunkSize,
+                (z % ChunkSize + ChunkSize) % ChunkSize
+            );
+                
+            if (_neighbors.TryGetValue(dir, out Chunk? neighborChunk))
+                return _neighbors[dir].GetBlock(newBlockPos) == 0;
+            
+            return true;
+        }
+
+        public void ReloadChunk()
+        {
+            GenerateMesh();
+            SetupBuffers();
+        }
+
+        byte GetBlock(Vector3 pos)
+        {
+            return _blocks[(int)pos.X, (int)pos.Y, (int)pos.Z];
         }
 
         private void AddFace(List<float> vertices, List<uint> indices, Vector3 pos, Vector3 normal, ref uint index, Vector2[] texCoords)
