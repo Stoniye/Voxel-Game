@@ -12,14 +12,23 @@ namespace Voxel_Game.res.scripts
         private const float Fov = 90.0f;
         
         //Camera Variables
-        private Vector3 _cameraPos = new Vector3(0.0f, 15.0f, 0.0f);
         private Vector3 _cameraFront = new Vector3(0.0f, 0.0f, -1.0f);
         readonly Vector3 _cameraUp = new Vector3(0.0f, 1.0f, 0.0f);
-        private float _cameraSpeed = 10.0f;
         private readonly float _mouseSensitivity = 0.1f;
         private float _yaw = -90.0f;
         private float _pitch;
         private Vector2 _lastMousePos;
+        
+        //Player Variables
+        private Vector3 _playerPos = new Vector3(0.0f, 20.0f, 0.0f);
+        private float _verticalVelocity = 0.0f;
+        private bool _isGrounded = false;
+        private const float Gravity = -9.81f;
+        private const float JumpStrength = 5.0f;
+        private const float PlayerHeight = 1.8f;
+        private const float PlayerRadius = 0.3f;
+        private const float PlayerSpeed = 2.0f;
+        private const float PlayerSpeedSprint = 4.0f;
         
         //OpenGL
         private Shader _shader;
@@ -103,7 +112,7 @@ namespace Voxel_Game.res.scripts
         {
             base.OnRenderFrame(e);
 
-            _view = Matrix4.LookAt(_cameraPos, _cameraPos + _cameraFront, _cameraUp);
+            _view = Matrix4.LookAt(_playerPos, _playerPos + _cameraFront, _cameraUp);
         
             GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
             
@@ -128,34 +137,165 @@ namespace Voxel_Game.res.scripts
             }
             
             //Movement
-            float delta = (float)e.Time * _cameraSpeed;
-            if (KeyboardState.IsKeyDown(Keys.W))
-                _cameraPos += delta * _cameraFront;
-            if (KeyboardState.IsKeyDown(Keys.S))
-                _cameraPos -= delta * _cameraFront;
-            if (KeyboardState.IsKeyDown(Keys.A))
-                _cameraPos -= delta * Vector3.Normalize(Vector3.Cross(_cameraFront, _cameraUp));
-            if (KeyboardState.IsKeyDown(Keys.D))
-                _cameraPos += delta * Vector3.Normalize(Vector3.Cross(_cameraFront, _cameraUp));
-            if (KeyboardState.IsKeyDown(Keys.Space))
-                _cameraPos += delta * _cameraUp;
-            if (KeyboardState.IsKeyDown(Keys.LeftControl))
-                _cameraPos -= delta * _cameraUp;
+            float delta = (float)e.Time;
+            _isGrounded = IsGrounded();
             
-            if (KeyboardState.IsKeyDown(Keys.LeftShift))
-                _cameraSpeed = 20.0f;
+            //Add Gravity force
+            if (!_isGrounded)
+                _verticalVelocity += Gravity * delta;
             else
-                _cameraSpeed = 10.0f;
+                _verticalVelocity = 0.0f;
             
-            if (KeyboardState.IsKeyDown(Keys.Escape)) //Tab out
+            //Jumping
+            if (KeyboardState.IsKeyDown(Keys.Space) && _isGrounded)
+            {
+                _verticalVelocity = JumpStrength;
+                _isGrounded = false;
+            }
+            
+            //Apply vertical velocity
+            Vector3 newCameraPos = _playerPos + new Vector3(0.0f, _verticalVelocity * delta, 0.0f);
+
+            //Movement Input
+            float cameraSpeed = KeyboardState.IsKeyDown(Keys.LeftShift) ? PlayerSpeedSprint : PlayerSpeed;
+            Vector3 moveDir = Vector3.Zero;
+            
+            if (KeyboardState.IsKeyDown(Keys.W))
+                moveDir += _cameraFront;
+            if (KeyboardState.IsKeyDown(Keys.S))
+                moveDir -= _cameraFront;
+            if (KeyboardState.IsKeyDown(Keys.A))
+                moveDir -= Vector3.Normalize(Vector3.Cross(_cameraFront, _cameraUp));
+            if (KeyboardState.IsKeyDown(Keys.D))
+                moveDir += Vector3.Normalize(Vector3.Cross(_cameraFront, _cameraUp));
+
+            if (moveDir != Vector3.Zero)
+                moveDir = Vector3.Normalize(moveDir) * cameraSpeed * delta;
+
+            //Collision detection
+            newCameraPos = MoveWithCollision(newCameraPos, moveDir); //Horizontal
+            newCameraPos = ResolveVerticalCollision(newCameraPos); //Vertical
+
+            _playerPos = newCameraPos;
+
+            if (KeyboardState.IsKeyDown(Keys.Escape)) // Tab out
                 CursorState = CursorState.Normal;
             
-            //Close Window
+            //Close window
             if (KeyboardState.IsKeyDown(Keys.Backspace))
             {
                 CursorState = CursorState.Normal;
                 Close();
             }
+        }
+        
+        private bool IsGrounded()
+        {
+            Vector3 playerFeetPos = _playerPos - new Vector3(0.0f, PlayerHeight / 2.0f + 0.1f, 0.0f); //+ 0.1f offset to avoid glitching into the ground
+            return IsBlockAt(playerFeetPos);
+        }
+
+        private bool IsBlockAt(Vector3 worldPos)
+        {
+            Vector2i chunkCoord = new Vector2i(
+                (int)Math.Floor(worldPos.X / Chunk.ChunkSize),
+                (int)Math.Floor(worldPos.Z / Chunk.ChunkSize)
+            );
+            Vector3 localPos = new Vector3(
+                (worldPos.X % Chunk.ChunkSize + Chunk.ChunkSize) % Chunk.ChunkSize,
+                worldPos.Y,
+                (worldPos.Z % Chunk.ChunkSize + Chunk.ChunkSize) % Chunk.ChunkSize
+            );
+
+            if (_chunks.TryGetValue(chunkCoord, out Chunk? chunk))
+            {
+                if (localPos.Y is >= 0 and < Chunk.ChunkSize)
+                {
+                    return chunk.GetBlock(localPos) != 0;
+                }
+            }
+            return false;
+        }
+        
+        private Vector3 MoveWithCollision(Vector3 newPos, Vector3 moveDir)
+        {
+            Vector3 resultPos = newPos;
+            
+            Vector3[] axes = {new Vector3(moveDir.X, 0, 0), new Vector3(0, moveDir.Y, 0), new Vector3(0, 0, moveDir.Z) };
+            for (int i = 0; i < axes.Length; i++) //Check every movement direction
+            {
+                if (axes[i] == Vector3.Zero) continue;
+
+                Vector3 testPos = resultPos + axes[i];
+                
+                Vector3 testMin = testPos - new Vector3(PlayerRadius, PlayerHeight / 2.0f, PlayerRadius);
+                Vector3 testMax = testPos + new Vector3(PlayerRadius, PlayerHeight / 2.0f, PlayerRadius);
+
+                if (!IsColliding(testMin, testMax))
+                {
+                    resultPos = testPos;
+                }
+            }
+
+            return resultPos;
+        }
+
+        private Vector3 ResolveVerticalCollision(Vector3 newPos)
+        {
+            Vector3 aabbMin = newPos - new Vector3(PlayerRadius, PlayerHeight / 2.0f, PlayerRadius);
+            Vector3 aabbMax = newPos + new Vector3(PlayerRadius, PlayerHeight / 2.0f, PlayerRadius);
+
+            if (IsColliding(aabbMin, aabbMax)) //Test if Player Collides vertical
+            {
+                Vector3 upPos = newPos + new Vector3(0.0f, 0.1f, 0.0f);
+                Vector3 downPos = newPos - new Vector3(0.0f, 0.1f, 0.0f);
+
+                Vector3 upMin = upPos - new Vector3(PlayerRadius, PlayerHeight / 2.0f, PlayerRadius);
+                Vector3 upMax = upPos + new Vector3(PlayerRadius, PlayerHeight / 2.0f, PlayerRadius);
+                Vector3 downMin = downPos - new Vector3(PlayerRadius, PlayerHeight / 2.0f, PlayerRadius);
+                Vector3 downMax = downPos + new Vector3(PlayerRadius, PlayerHeight / 2.0f, PlayerRadius);
+
+                if (!IsColliding(upMin, upMax)) //Test if Player collides upwards
+                {
+                    _verticalVelocity = 0.0f;
+                    return upPos;
+                }
+                
+                if (!IsColliding(downMin, downMax)) //Test if Player collides downwards
+                {
+                    _verticalVelocity = 0.0f;
+                    return downPos;
+                }
+                
+                return _playerPos;
+            }
+
+            return newPos;
+        }
+
+        private bool IsColliding(Vector3 aabbMin, Vector3 aabbMax)
+        {
+            int minX = (int)Math.Floor(aabbMin.X);
+            int maxX = (int)Math.Ceiling(aabbMax.X);
+            int minY = (int)Math.Floor(aabbMin.Y);
+            int maxY = (int)Math.Ceiling(aabbMax.Y);
+            int minZ = (int)Math.Floor(aabbMin.Z);
+            int maxZ = (int)Math.Ceiling(aabbMax.Z);
+
+            for (int x = minX; x <= maxX; x++)
+            {
+                for (int y = minY; y <= maxY; y++)
+                {
+                    for (int z = minZ; z <= maxZ; z++)
+                    {
+                        if (IsBlockAt(new Vector3(x, y, z)))
+                        {
+                            return true; //Collision
+                        }
+                    }
+                }
+            }
+            return false;
         }
         
         protected override void OnMouseMove(MouseMoveEventArgs e)

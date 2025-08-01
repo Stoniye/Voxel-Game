@@ -7,7 +7,7 @@ namespace Voxel_Game.res.scripts
     {
         public const int ChunkSize = 16;
         
-        public readonly Dictionary<Vector2i, Chunk> _neighbors;
+        private readonly Dictionary<Vector2i, Chunk> _neighbors;
         
         private readonly byte[,,] _blocks;
         
@@ -168,7 +168,7 @@ namespace Voxel_Game.res.scripts
         private bool BlockIsTransparent(int x, int y, int z)
         {
             //Check if block in Chunk
-            if (x >= 0 && x < ChunkSize && y >= 0 && y < ChunkSize && z >= 0 && z < ChunkSize)
+            if ((x, y, z) is (>= 0 and < ChunkSize, >= 0 and < ChunkSize, >= 0 and < ChunkSize))
             {
                 return _blocks[x, y, z] == 0;
             }
@@ -185,7 +185,7 @@ namespace Voxel_Game.res.scripts
             );
                 
             if (_neighbors.TryGetValue(dir, out Chunk? neighborChunk))
-                return _neighbors[dir].GetBlock(newBlockPos) == 0;
+                return neighborChunk.GetBlock(newBlockPos) == 0;
             
             return true;
         }
@@ -196,7 +196,7 @@ namespace Voxel_Game.res.scripts
             SetupBuffers();
         }
 
-        byte GetBlock(Vector3 pos)
+        public byte GetBlock(Vector3 pos)
         {
             return _blocks[(int)pos.X, (int)pos.Y, (int)pos.Z];
         }
