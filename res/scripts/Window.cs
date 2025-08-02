@@ -30,7 +30,12 @@ namespace Voxel_Game.res.scripts
         private const float PlayerSpeed = 2.0f;
         private const float PlayerSpeedSprint = 4.0f;
         
-        //OpenGL
+        //2D Screen
+        private Shader _crosshairShader;
+        private Matrix4 _orthoProjection;
+        private int _crosshairVao, _crosshairVbo;
+        
+        //3D World
         private Shader _shader;
         private Matrix4 _view, _projection;
         
@@ -50,6 +55,8 @@ namespace Voxel_Game.res.scripts
 
             GL.ClearColor(0.5f, 0.7f, 0.9f, 1.0f);
             GL.Enable(EnableCap.DepthTest);
+            
+            _crosshairShader = new Shader("../../../res/shaders/crosshair.vert", "../../../res/shaders/crosshair.frag");
 
             _shader = new Shader("../../../res/shaders/shader.vert", "../../../res/shaders/shader.frag");
             _shader.Use();
@@ -58,6 +65,8 @@ namespace Voxel_Game.res.scripts
 
             _projection = Matrix4.CreatePerspectiveFieldOfView(MathHelper.DegreesToRadians(Fov), Size.X / (float)Size.Y, 0.1f, 100.0f);
             _shader.SetMatrix4("projection", _projection);
+            
+            _orthoProjection = Matrix4.CreateOrthographicOffCenter(0, Size.X, 0, Size.Y, -1.0f, 1.0f);
         }
 
         private void GenerateWorld()
@@ -111,7 +120,8 @@ namespace Voxel_Game.res.scripts
         protected override void OnRenderFrame(FrameEventArgs e)
         {
             base.OnRenderFrame(e);
-
+            
+            //3D World
             _view = Matrix4.LookAt(_playerPos, _playerPos + _cameraFront, _cameraUp);
         
             GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
@@ -120,8 +130,47 @@ namespace Voxel_Game.res.scripts
             {
                 chunk.Render(_view, _projection);
             }
+            
+            //2D World
+            GL.Disable(EnableCap.DepthTest);
+            
+            _crosshairShader.Use();
+            _crosshairShader.SetMatrix4("projection", _orthoProjection);
+
+            GL.BindVertexArray(_crosshairVao);
+            GL.DrawArrays(PrimitiveType.Lines, 0, 4);
+            GL.BindVertexArray(0);
+
+            GL.Enable(EnableCap.DepthTest);
 
             SwapBuffers();
+        }
+        
+        private void SetupCrosshair()
+        {
+            float crosshairSize = 10.0f;
+            float centerX = Size.X / 2.0f;
+            float centerY = Size.Y / 2.0f;
+
+            float[] vertices = new float[]
+            {
+                centerX - crosshairSize, centerY,
+                centerX + crosshairSize, centerY,
+                centerX, centerY - crosshairSize,
+                centerX, centerY + crosshairSize
+            };
+
+            _crosshairVao = GL.GenVertexArray();
+            _crosshairVbo = GL.GenBuffer();
+
+            GL.BindVertexArray(_crosshairVao);
+            GL.BindBuffer(BufferTarget.ArrayBuffer, _crosshairVbo);
+            GL.BufferData(BufferTarget.ArrayBuffer, vertices.Length * sizeof(float), vertices, BufferUsageHint.StaticDraw);
+
+            GL.VertexAttribPointer(0, 2, VertexAttribPointerType.Float, false, 2 * sizeof(float), 0);
+            GL.EnableVertexAttribArray(0);
+
+            GL.BindVertexArray(0);
         }
         
         protected override void OnUpdateFrame(FrameEventArgs e)
@@ -323,9 +372,15 @@ namespace Voxel_Game.res.scripts
         protected override void OnFramebufferResize(FramebufferResizeEventArgs e)
         {
             base.OnFramebufferResize(e);
+            
+            //3D World
             GL.Viewport(0, 0, e.Width, e.Height);
             _projection = Matrix4.CreatePerspectiveFieldOfView(MathHelper.DegreesToRadians(Fov), e.Width / (float)e.Height, 0.1f, 200.0f);
             _shader.SetMatrix4("projection", _projection);
+            
+            //2D World
+            _orthoProjection = Matrix4.CreateOrthographicOffCenter(0, Size.X, 0, Size.Y, -1.0f, 1.0f);
+            SetupCrosshair();
         }
 
         protected override void OnUnload()
