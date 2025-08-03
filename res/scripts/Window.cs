@@ -20,7 +20,7 @@ namespace Voxel_Game.res.scripts
         private Vector2 _lastMousePos;
         
         //Player Variables
-        private Vector3 _playerPos = new Vector3(0.0f, 20.0f, 0.0f);
+        private Vector3 _playerPos = new Vector3(3.0f, 20.0f, 3.0f);
         private float _verticalVelocity = 0.0f;
         private bool _isGrounded = false;
         private const float Gravity = -9.81f;
@@ -126,7 +126,7 @@ namespace Voxel_Game.res.scripts
         
             GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
             
-            foreach (var chunk in _chunks.Values)
+            foreach (Chunk chunk in _chunks.Values)
             {
                 chunk.Render(_view, _projection);
             }
@@ -226,12 +226,12 @@ namespace Voxel_Game.res.scripts
             newCameraPos = ResolveVerticalCollision(newCameraPos); //Vertical
 
             _playerPos = newCameraPos;
-
+            
+            //Other Input
             if (KeyboardState.IsKeyDown(Keys.Escape)) // Tab out
                 CursorState = CursorState.Normal;
             
-            //Close window
-            if (KeyboardState.IsKeyDown(Keys.Backspace))
+            if (KeyboardState.IsKeyDown(Keys.Backspace)) //Close window
             {
                 CursorState = CursorState.Normal;
                 Close();
@@ -260,7 +260,7 @@ namespace Voxel_Game.res.scripts
             {
                 if (localPos.Y is >= 0 and < Chunk.ChunkSize)
                 {
-                    return chunk.GetBlock(localPos) != 0;
+                    return chunk.GetBlock(new Vector3i((int)localPos.X, (int)localPos.Y, (int)localPos.Z)) != 0;
                 }
             }
             return false;
@@ -368,7 +368,129 @@ namespace Voxel_Game.res.scripts
                 (float)(Math.Sin(MathHelper.DegreesToRadians(_yaw)) * Math.Cos(MathHelper.DegreesToRadians(_pitch)))
             ));
         }
+
+        protected override void OnMouseDown(MouseButtonEventArgs e)
+        {
+            base.OnMouseDown(e);
+
+            if (e.Button == MouseButton.Left)
+            {
+                (Vector3i? blockPos, Chunk? chunk) = GetBlockAtCenterPosition();
+                if (blockPos.HasValue && chunk != null)
+                {
+                    chunk.RemoveBlock(blockPos.Value);
+                    chunk.ReloadChunk();
+                }
+            }
+        }
         
+        private Vector3 GetCenterRay()
+        {   
+            int centerX = Size.X / 2;
+            int centerY = Size.Y / 2;
+    
+            Vector2 centerPos = new Vector2(centerX, centerY);
+            Vector4 rayClip = new Vector4((2.0f * centerPos.X) / Size.X - 1.0f, 1.0f - (2.0f * centerPos.Y) / Size.Y, -1.0f, 1.0f);
+            
+            Vector4 rayEye = rayClip * Matrix4.Invert(_projection);
+            rayEye = new Vector4(rayEye.X, rayEye.Y, -1.0f, 0.0f);
+            
+            Vector4 rayWorld = rayEye * Matrix4.Invert(_view);
+            
+            return Vector3.Normalize(new Vector3(rayWorld.X, rayWorld.Y, rayWorld.Z));
+        }
+        
+        private (Vector3i? blockPos, Chunk? chunk) GetBlockAtCenterPosition()
+        {
+            Vector3 rayDirection = GetCenterRay();
+            const float maxDistance = 10.0f;
+
+            Vector3 rayDir = Vector3.Normalize(rayDirection);
+            
+            Vector3i blockPos = new Vector3i(
+                (int)Math.Floor(_playerPos.X),
+                (int)Math.Floor(_playerPos.Y),
+                (int)Math.Floor(_playerPos.Z)
+            );
+            
+            Vector3i step = new Vector3i(
+                rayDir.X > 0 ? 1 : -1,
+                rayDir.Y > 0 ? 1 : -1,
+                rayDir.Z > 0 ? 1 : -1
+            );
+
+            float nextBoundaryX = rayDir.X > 0 ? blockPos.X + 0.5f : blockPos.X - 0.5f;
+            float nextBoundaryY = rayDir.Y > 0 ? blockPos.Y + 0.5f : blockPos.Y - 0.5f;
+            float nextBoundaryZ = rayDir.Z > 0 ? blockPos.Z + 0.5f : blockPos.Z - 0.5f;
+            
+            Vector3 tMax = new Vector3(
+                rayDir.X != 0 ? (nextBoundaryX - _playerPos.X) / rayDir.X : float.MaxValue,
+                rayDir.Y != 0 ? (nextBoundaryY - _playerPos.Y) / rayDir.Y : float.MaxValue,
+                rayDir.Z != 0 ? (nextBoundaryZ - _playerPos.Z) / rayDir.Z : float.MaxValue
+            );
+            
+            Vector3 tDelta = new Vector3(
+                rayDir.X != 0 ? Math.Abs(1.0f / rayDir.X) : float.MaxValue,
+                rayDir.Y != 0 ? Math.Abs(1.0f / rayDir.Y) : float.MaxValue,
+                rayDir.Z != 0 ? Math.Abs(1.0f / rayDir.Z) : float.MaxValue
+            );
+
+            float distanceTraveled = 0.0f;
+
+            while (distanceTraveled < maxDistance)
+            {
+                int axis;
+                if (tMax.X < tMax.Y && tMax.X < tMax.Z)
+                    axis = 0;
+                else if (tMax.Y < tMax.Z)
+                    axis = 1;
+                else
+                    axis = 2;
+                
+                if (axis == 0)
+                {
+                    blockPos.X += step.X;
+                    tMax.X += tDelta.X;
+                }
+                else if (axis == 1)
+                {
+                    blockPos.Y += step.Y;
+                    tMax.Y += tDelta.Y;
+                }
+                else
+                {
+                    blockPos.Z += step.Z;
+                    tMax.Z += tDelta.Z;
+                }
+
+                distanceTraveled = Math.Min(tMax.X, Math.Min(tMax.Y, tMax.Z));
+                
+                Vector2i chunkCoord = new Vector2i(
+                    (int)Math.Floor((float)blockPos.X / Chunk.ChunkSize),
+                    (int)Math.Floor((float)blockPos.Z / Chunk.ChunkSize)
+                );
+
+                Vector3i localPos = new Vector3i(
+                    (blockPos.X % Chunk.ChunkSize + Chunk.ChunkSize) % Chunk.ChunkSize,
+                    blockPos.Y,
+                    (blockPos.Z % Chunk.ChunkSize + Chunk.ChunkSize) % Chunk.ChunkSize
+                );
+                
+                if (localPos.Y >= 0 && localPos.Y < Chunk.ChunkSize)
+                {
+                    if (_chunks.TryGetValue(chunkCoord, out Chunk? chunk))
+                    {
+                        if (chunk.GetBlock(new Vector3i(localPos.X, localPos.Y, localPos.Z)) != 0)
+                        {
+                            return (blockPos, chunk);
+                        }
+                    }
+                }
+            }
+
+            return (null, null);
+        }
+
         protected override void OnFramebufferResize(FramebufferResizeEventArgs e)
         {
             base.OnFramebufferResize(e);
@@ -385,11 +507,12 @@ namespace Voxel_Game.res.scripts
 
         protected override void OnUnload()
         {
-            foreach (var chunk in _chunks.Values)
+            foreach (Chunk chunk in _chunks.Values)
             {
                 chunk.Dispose();
             }
             _shader.Dispose();
+            _crosshairShader.Dispose();
             base.OnUnload();
         }
     }

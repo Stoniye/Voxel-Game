@@ -144,6 +144,12 @@ namespace Voxel_Game.res.scripts
         {
             _neighbors[relativePosition] = neighbor;
         }
+
+        public void RemoveBlock(Vector3i blockPos)
+        {
+            //TODO: Check if block is in Chunk (remove all checks before call)
+            _blocks[blockPos.X, blockPos.Y, blockPos.Z] = 0;
+        }
         private Vector2[] GetTextureCoords(byte blockType)
         {
             int atlasSize = 16;
@@ -178,7 +184,7 @@ namespace Voxel_Game.res.scripts
                 x >= ChunkSize ? 1 : x < 0 ? -1 : 0,
                 z >= ChunkSize ? 1 : z < 0 ? -1 : 0
             );
-            Vector3 newBlockPos = new Vector3(
+            Vector3i newBlockPos = new Vector3i(
                 (x % ChunkSize + ChunkSize) % ChunkSize,
                 (y % ChunkSize + ChunkSize) % ChunkSize,
                 (z % ChunkSize + ChunkSize) % ChunkSize
@@ -192,13 +198,15 @@ namespace Voxel_Game.res.scripts
 
         public void ReloadChunk()
         {
+            //TODO: Only regenerate Changes
             GenerateMesh();
             SetupBuffers();
         }
 
-        public byte GetBlock(Vector3 pos)
+        public byte GetBlock(Vector3i pos)
         {
-            return _blocks[(int)pos.X, (int)pos.Y, (int)pos.Z];
+            //TODO: Check if block is in Chunk (remove all checks before call)
+            return _blocks[pos.X, pos.Y, pos.Z];
         }
 
         private void AddFace(List<float> vertices, List<uint> indices, Vector3 pos, Vector3 normal, ref uint index, Vector2[] texCoords)
