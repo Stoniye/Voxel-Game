@@ -20,13 +20,13 @@ namespace Voxel_Game.res.scripts
         private Vector2 _lastMousePos;
         
         //Player Variables
-        private Vector3 _playerPos = new Vector3(3.0f, 20.0f, 3.0f);
-        private float _verticalVelocity = 0.0f;
-        private bool _isGrounded = false;
+        private Vector3 _playerPos = new Vector3(6.0f, 20.0f, 6.0f);
+        private float _verticalVelocity;
+        private bool _isGrounded;
         private const float Gravity = -9.81f;
         private const float JumpStrength = 5.0f;
-        private const float PlayerHeight = 1.8f;
-        private const float PlayerRadius = 0.3f;
+        private const float PlayerHeight = 2.0f;
+        private const float PlayerRadius = 0.0f;
         private const float PlayerSpeed = 2.0f;
         private const float PlayerSpeedSprint = 4.0f;
         
@@ -71,8 +71,8 @@ namespace Voxel_Game.res.scripts
 
         private void GenerateWorld()
         {
-            const int chunksX = 3;
-            const int chunksZ = 3;
+            const int chunksX = 0;
+            const int chunksZ = 0;
             
             //Generate Chunks
             for (int x = 0; x <= chunksX; x++)
@@ -203,29 +203,32 @@ namespace Voxel_Game.res.scripts
             }
             
             //Apply vertical velocity
-            Vector3 newCameraPos = _playerPos + new Vector3(0.0f, _verticalVelocity * delta, 0.0f);
+            Vector3 newPlayerPos = _playerPos + new Vector3(0.0f, _verticalVelocity * delta, 0.0f);
 
             //Movement Input
-            float cameraSpeed = KeyboardState.IsKeyDown(Keys.LeftShift) ? PlayerSpeedSprint : PlayerSpeed;
+            float playerSpeed = KeyboardState.IsKeyDown(Keys.LeftShift) ? PlayerSpeedSprint : PlayerSpeed;
             Vector3 moveDir = Vector3.Zero;
             
+            Vector3 horizontalCameraFront = new Vector3(_cameraFront.X, 0.0f, _cameraFront.Z);
+            if (horizontalCameraFront != Vector3.Zero)
+                horizontalCameraFront = Vector3.Normalize(horizontalCameraFront);
+            
             if (KeyboardState.IsKeyDown(Keys.W))
-                moveDir += _cameraFront;
+                moveDir += horizontalCameraFront;
             if (KeyboardState.IsKeyDown(Keys.S))
-                moveDir -= _cameraFront;
+                moveDir -= horizontalCameraFront;
             if (KeyboardState.IsKeyDown(Keys.A))
-                moveDir -= Vector3.Normalize(Vector3.Cross(_cameraFront, _cameraUp));
+                moveDir -= Vector3.Normalize(Vector3.Cross(horizontalCameraFront, _cameraUp));
             if (KeyboardState.IsKeyDown(Keys.D))
-                moveDir += Vector3.Normalize(Vector3.Cross(_cameraFront, _cameraUp));
+                moveDir += Vector3.Normalize(Vector3.Cross(horizontalCameraFront, _cameraUp));
 
             if (moveDir != Vector3.Zero)
-                moveDir = Vector3.Normalize(moveDir) * cameraSpeed * delta;
+                moveDir = Vector3.Normalize(moveDir) * playerSpeed * delta;
 
-            //Collision detection
-            newCameraPos = MoveWithCollision(newCameraPos, moveDir); //Horizontal
-            newCameraPos = ResolveVerticalCollision(newCameraPos); //Vertical
+            //TODO: Collision detection
+            newPlayerPos += moveDir;
 
-            _playerPos = newCameraPos;
+            _playerPos = newPlayerPos;
             
             //Other Input
             if (KeyboardState.IsKeyDown(Keys.Escape)) // Tab out
@@ -240,16 +243,18 @@ namespace Voxel_Game.res.scripts
         
         private bool IsGrounded()
         {
-            Vector3 playerFeetPos = _playerPos - new Vector3(0.0f, PlayerHeight / 2.0f + 0.1f, 0.0f); //+ 0.1f offset to avoid glitching into the ground
-            return IsBlockAt(playerFeetPos);
+            Vector3 playerFeetPos = _playerPos - new Vector3(0.0f, PlayerHeight / 2.0f + 0.5f, 0.0f);
+            Vector3i playerFeetPosInt = new Vector3i((int)Math.Round(playerFeetPos.X), (int)Math.Round(playerFeetPos.Y), (int)Math.Round(playerFeetPos.Z));
+            return IsBlockAt(playerFeetPosInt);
         }
 
-        private bool IsBlockAt(Vector3 worldPos)
+        private bool IsBlockAt(Vector3i worldPos)
         {
             Vector2i chunkCoord = new Vector2i(
-                (int)Math.Floor(worldPos.X / Chunk.ChunkSize),
-                (int)Math.Floor(worldPos.Z / Chunk.ChunkSize)
+                (int)Math.Floor(worldPos.X / (float)Chunk.ChunkSize),
+                (int)Math.Floor(worldPos.Z / (float)Chunk.ChunkSize)
             );
+            
             Vector3 localPos = new Vector3(
                 (worldPos.X % Chunk.ChunkSize + Chunk.ChunkSize) % Chunk.ChunkSize,
                 worldPos.Y,
@@ -257,93 +262,8 @@ namespace Voxel_Game.res.scripts
             );
 
             if (_chunks.TryGetValue(chunkCoord, out Chunk? chunk))
-            {
-                if (localPos.Y is >= 0 and < Chunk.ChunkSize)
-                {
-                    return chunk.GetBlock(new Vector3i((int)localPos.X, (int)localPos.Y, (int)localPos.Z)) != 0;
-                }
-            }
-            return false;
-        }
-        
-        private Vector3 MoveWithCollision(Vector3 newPos, Vector3 moveDir)
-        {
-            Vector3 resultPos = newPos;
+                return chunk.GetBlock(new Vector3i((int)localPos.X, (int)localPos.Y, (int)localPos.Z)) != 0;
             
-            Vector3[] axes = {new Vector3(moveDir.X, 0, 0), new Vector3(0, moveDir.Y, 0), new Vector3(0, 0, moveDir.Z) };
-            for (int i = 0; i < axes.Length; i++) //Check every movement direction
-            {
-                if (axes[i] == Vector3.Zero) continue;
-
-                Vector3 testPos = resultPos + axes[i];
-                
-                Vector3 testMin = testPos - new Vector3(PlayerRadius, PlayerHeight / 2.0f, PlayerRadius);
-                Vector3 testMax = testPos + new Vector3(PlayerRadius, PlayerHeight / 2.0f, PlayerRadius);
-
-                if (!IsColliding(testMin, testMax))
-                {
-                    resultPos = testPos;
-                }
-            }
-
-            return resultPos;
-        }
-
-        private Vector3 ResolveVerticalCollision(Vector3 newPos)
-        {
-            Vector3 aabbMin = newPos - new Vector3(PlayerRadius, PlayerHeight / 2.0f, PlayerRadius);
-            Vector3 aabbMax = newPos + new Vector3(PlayerRadius, PlayerHeight / 2.0f, PlayerRadius);
-
-            if (IsColliding(aabbMin, aabbMax)) //Test if Player Collides vertical
-            {
-                Vector3 upPos = newPos + new Vector3(0.0f, 0.1f, 0.0f);
-                Vector3 downPos = newPos - new Vector3(0.0f, 0.1f, 0.0f);
-
-                Vector3 upMin = upPos - new Vector3(PlayerRadius, PlayerHeight / 2.0f, PlayerRadius);
-                Vector3 upMax = upPos + new Vector3(PlayerRadius, PlayerHeight / 2.0f, PlayerRadius);
-                Vector3 downMin = downPos - new Vector3(PlayerRadius, PlayerHeight / 2.0f, PlayerRadius);
-                Vector3 downMax = downPos + new Vector3(PlayerRadius, PlayerHeight / 2.0f, PlayerRadius);
-
-                if (!IsColliding(upMin, upMax)) //Test if Player collides upwards
-                {
-                    _verticalVelocity = 0.0f;
-                    return upPos;
-                }
-                
-                if (!IsColliding(downMin, downMax)) //Test if Player collides downwards
-                {
-                    _verticalVelocity = 0.0f;
-                    return downPos;
-                }
-                
-                return _playerPos;
-            }
-
-            return newPos;
-        }
-
-        private bool IsColliding(Vector3 aabbMin, Vector3 aabbMax)
-        {
-            int minX = (int)Math.Floor(aabbMin.X);
-            int maxX = (int)Math.Ceiling(aabbMax.X);
-            int minY = (int)Math.Floor(aabbMin.Y);
-            int maxY = (int)Math.Ceiling(aabbMax.Y);
-            int minZ = (int)Math.Floor(aabbMin.Z);
-            int maxZ = (int)Math.Ceiling(aabbMax.Z);
-
-            for (int x = minX; x <= maxX; x++)
-            {
-                for (int y = minY; y <= maxY; y++)
-                {
-                    for (int z = minZ; z <= maxZ; z++)
-                    {
-                        if (IsBlockAt(new Vector3(x, y, z)))
-                        {
-                            return true; //Collision
-                        }
-                    }
-                }
-            }
             return false;
         }
         
@@ -379,6 +299,16 @@ namespace Voxel_Game.res.scripts
                 if (blockPos.HasValue && chunk != null)
                 {
                     chunk.RemoveBlock(blockPos.Value);
+                    chunk.ReloadChunk();
+                }
+            }
+            
+            if (e.Button == MouseButton.Right)
+            {
+                (Vector3i? blockPos, Chunk? chunk) = GetAirAtCenterPosition();
+                if (blockPos.HasValue && chunk != null)
+                {
+                    chunk.SetBlock(blockPos.Value, 2);
                     chunk.ReloadChunk();
                 }
             }
@@ -476,16 +406,111 @@ namespace Voxel_Game.res.scripts
                     (blockPos.Z % Chunk.ChunkSize + Chunk.ChunkSize) % Chunk.ChunkSize
                 );
                 
-                if (localPos.Y >= 0 && localPos.Y < Chunk.ChunkSize)
+                if (_chunks.TryGetValue(chunkCoord, out Chunk? chunk))
                 {
-                    if (_chunks.TryGetValue(chunkCoord, out Chunk? chunk))
+                    if (chunk.GetBlock(new Vector3i(localPos.X, localPos.Y, localPos.Z)) != 0)
                     {
-                        if (chunk.GetBlock(new Vector3i(localPos.X, localPos.Y, localPos.Z)) != 0)
-                        {
-                            return (blockPos, chunk);
-                        }
+                        return (localPos, chunk);
                     }
                 }
+            }
+
+            return (null, null);
+        }
+        
+        private (Vector3i? blockPos, Chunk? chunk) GetAirAtCenterPosition()
+        {
+            Vector3 rayDirection = GetCenterRay();
+            const float maxDistance = 10.0f;
+
+            Vector3 rayDir = Vector3.Normalize(rayDirection);
+            
+            Vector3i blockPos = new Vector3i(
+                (int)Math.Floor(_playerPos.X),
+                (int)Math.Floor(_playerPos.Y),
+                (int)Math.Floor(_playerPos.Z)
+            );
+            
+            Vector3i step = new Vector3i(
+                rayDir.X > 0 ? 1 : -1,
+                rayDir.Y > 0 ? 1 : -1,
+                rayDir.Z > 0 ? 1 : -1
+            );
+
+            float nextBoundaryX = rayDir.X > 0 ? blockPos.X + 0.5f : blockPos.X - 0.5f;
+            float nextBoundaryY = rayDir.Y > 0 ? blockPos.Y + 0.5f : blockPos.Y - 0.5f;
+            float nextBoundaryZ = rayDir.Z > 0 ? blockPos.Z + 0.5f : blockPos.Z - 0.5f;
+            
+            Vector3 tMax = new Vector3(
+                rayDir.X != 0 ? (nextBoundaryX - _playerPos.X) / rayDir.X : float.MaxValue,
+                rayDir.Y != 0 ? (nextBoundaryY - _playerPos.Y) / rayDir.Y : float.MaxValue,
+                rayDir.Z != 0 ? (nextBoundaryZ - _playerPos.Z) / rayDir.Z : float.MaxValue
+            );
+            
+            Vector3 tDelta = new Vector3(
+                rayDir.X != 0 ? Math.Abs(1.0f / rayDir.X) : float.MaxValue,
+                rayDir.Y != 0 ? Math.Abs(1.0f / rayDir.Y) : float.MaxValue,
+                rayDir.Z != 0 ? Math.Abs(1.0f / rayDir.Z) : float.MaxValue
+            );
+
+            float distanceTraveled = 0.0f;
+            Vector3i prevLocalPos = blockPos;
+            Vector2i prevChunkCoord = new Vector2i(
+                (int)Math.Floor((float)blockPos.X / Chunk.ChunkSize),
+                (int)Math.Floor((float)blockPos.Z / Chunk.ChunkSize)
+            );
+
+            while (distanceTraveled < maxDistance)
+            {
+                int axis;
+                if (tMax.X < tMax.Y && tMax.X < tMax.Z)
+                    axis = 0;
+                else if (tMax.Y < tMax.Z)
+                    axis = 1;
+                else
+                    axis = 2;
+                
+                if (axis == 0)
+                {
+                    blockPos.X += step.X;
+                    tMax.X += tDelta.X;
+                }
+                else if (axis == 1)
+                {
+                    blockPos.Y += step.Y;
+                    tMax.Y += tDelta.Y;
+                }
+                else
+                {
+                    blockPos.Z += step.Z;
+                    tMax.Z += tDelta.Z;
+                }
+
+                distanceTraveled = Math.Min(tMax.X, Math.Min(tMax.Y, tMax.Z));
+                
+                Vector2i chunkCoord = new Vector2i(
+                    (int)Math.Floor((float)blockPos.X / Chunk.ChunkSize),
+                    (int)Math.Floor((float)blockPos.Z / Chunk.ChunkSize)
+                );
+
+                Vector3i localPos = new Vector3i(
+                    (blockPos.X % Chunk.ChunkSize + Chunk.ChunkSize) % Chunk.ChunkSize,
+                    blockPos.Y,
+                    (blockPos.Z % Chunk.ChunkSize + Chunk.ChunkSize) % Chunk.ChunkSize
+                );
+                
+                if (_chunks.TryGetValue(chunkCoord, out Chunk? chunk))
+                {
+                    if (chunk.GetBlock(new Vector3i(localPos.X, localPos.Y, localPos.Z)) != 0)
+                    {
+                        if (_chunks.TryGetValue(prevChunkCoord, out chunk))
+                            return (prevLocalPos, chunk);
+                        return (null, null);
+                    }
+                }
+                
+                prevLocalPos = localPos;
+                prevChunkCoord = chunkCoord;
             }
 
             return (null, null);

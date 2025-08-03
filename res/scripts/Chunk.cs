@@ -6,6 +6,7 @@ namespace Voxel_Game.res.scripts
     public class Chunk
     {
         public const int ChunkSize = 16;
+        public const int ChunkHeight = 100;
         
         private readonly Dictionary<Vector2i, Chunk> _neighbors;
         
@@ -28,7 +29,7 @@ namespace Voxel_Game.res.scripts
         {
             _position = position;
             _shader = shader;
-            _blocks = new byte[ChunkSize, ChunkSize, ChunkSize];
+            _blocks = new byte[ChunkSize, ChunkHeight, ChunkSize];
             _neighbors = neighbors ?? new Dictionary<Vector2i, Chunk>();
             InitializeBlocks();
             LoadTexture();
@@ -38,13 +39,13 @@ namespace Voxel_Game.res.scripts
         {
             for (int x = 0; x < ChunkSize; x++)
             {
-                for (int y = 0; y < ChunkSize; y++)
+                for (int y = 0; y < ChunkHeight; y++)
                 {
                     for (int z = 0; z < ChunkSize; z++)
                     {
                         if (y == 15)
                             _blocks[x, y, z] = 1; //Grass
-                        else
+                        else if (y <= 14)
                             _blocks[x, y, z] = 2; //Dirt
                     }
                 }
@@ -98,7 +99,7 @@ namespace Voxel_Game.res.scripts
 
             for (int x = 0; x < ChunkSize; x++)
             {
-                for (int y = 0; y < ChunkSize; y++)
+                for (int y = 0; y < ChunkHeight; y++)
                 {
                     for (int z = 0; z < ChunkSize; z++)
                     {
@@ -144,11 +145,15 @@ namespace Voxel_Game.res.scripts
         {
             _neighbors[relativePosition] = neighbor;
         }
-
         public void RemoveBlock(Vector3i blockPos)
         {
-            //TODO: Check if block is in Chunk (remove all checks before call)
-            _blocks[blockPos.X, blockPos.Y, blockPos.Z] = 0;
+            if ((blockPos.X, blockPos.Y, blockPos.Z) is (>= 0 and < ChunkSize, >= 0 and < ChunkHeight, >= 0 and < ChunkSize))
+                _blocks[blockPos.X, blockPos.Y, blockPos.Z] = 0;
+        }
+        public void SetBlock(Vector3i blockPos, byte blockType)
+        {
+            if ((blockPos.X, blockPos.Y, blockPos.Z) is (>= 0 and < ChunkSize, >= 0 and < ChunkHeight, >= 0 and < ChunkSize))
+                _blocks[blockPos.X, blockPos.Y, blockPos.Z] = blockType;
         }
         private Vector2[] GetTextureCoords(byte blockType)
         {
@@ -174,7 +179,7 @@ namespace Voxel_Game.res.scripts
         private bool BlockIsTransparent(int x, int y, int z)
         {
             //Check if block in Chunk
-            if ((x, y, z) is (>= 0 and < ChunkSize, >= 0 and < ChunkSize, >= 0 and < ChunkSize))
+            if ((x, y, z) is (>= 0 and < ChunkSize, >= 0 and < ChunkHeight, >= 0 and < ChunkSize))
             {
                 return _blocks[x, y, z] == 0;
             }
@@ -186,7 +191,7 @@ namespace Voxel_Game.res.scripts
             );
             Vector3i newBlockPos = new Vector3i(
                 (x % ChunkSize + ChunkSize) % ChunkSize,
-                (y % ChunkSize + ChunkSize) % ChunkSize,
+                (y % ChunkHeight + ChunkHeight) % ChunkHeight,
                 (z % ChunkSize + ChunkSize) % ChunkSize
             );
                 
@@ -196,17 +201,26 @@ namespace Voxel_Game.res.scripts
             return true;
         }
 
-        public void ReloadChunk()
+        public void ReloadChunk(bool reloadNeighbors = true)
         {
             //TODO: Only regenerate Changes
             GenerateMesh();
             SetupBuffers();
+
+            if (!reloadNeighbors) return;
+            
+            //TODO: Only reload neighbor chunk if block next to it got changed, otherwise it is useless
+            foreach (Chunk neighbor in _neighbors.Values)
+            {
+                neighbor.ReloadChunk(false);
+            }
         }
 
-        public byte GetBlock(Vector3i pos)
+        public byte GetBlock(Vector3i blockPos)
         {
-            //TODO: Check if block is in Chunk (remove all checks before call)
-            return _blocks[pos.X, pos.Y, pos.Z];
+            if ((blockPos.X, blockPos.Y, blockPos.Z) is (>= 0 and < ChunkSize, >= 0 and < ChunkHeight, >= 0 and < ChunkSize))
+                return _blocks[blockPos.X, blockPos.Y, blockPos.Z];
+            return 0;
         }
 
         private void AddFace(List<float> vertices, List<uint> indices, Vector3 pos, Vector3 normal, ref uint index, Vector2[] texCoords)
@@ -260,9 +274,6 @@ namespace Voxel_Game.res.scripts
                 vertices.Add(faceVertices[i].X);
                 vertices.Add(faceVertices[i].Y);
                 vertices.Add(faceVertices[i].Z);
-                vertices.Add(1.0f); // Red
-                vertices.Add(1.0f); // Green
-                vertices.Add(1.0f); // Blue
                 vertices.Add(texCoords[i].X);
                 vertices.Add(texCoords[i].Y);
             }
@@ -290,15 +301,11 @@ namespace Voxel_Game.res.scripts
             GL.BindBuffer(BufferTarget.ElementArrayBuffer, _elementBufferObject);
             GL.BufferData(BufferTarget.ElementArrayBuffer, _indices.Length * sizeof(uint), _indices, BufferUsageHint.StaticDraw);
 
-
-            GL.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 8 * sizeof(float), 0);
+            GL.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 5 * sizeof(float), 0);
             GL.EnableVertexAttribArray(0);
 
-            GL.VertexAttribPointer(1, 3, VertexAttribPointerType.Float, false, 8 * sizeof(float), 3 * sizeof(float));
+            GL.VertexAttribPointer(1, 2, VertexAttribPointerType.Float, false, 5 * sizeof(float), 3 * sizeof(float));
             GL.EnableVertexAttribArray(1);
-
-            GL.VertexAttribPointer(2, 2, VertexAttribPointerType.Float, false, 8 * sizeof(float), 6 * sizeof(float));
-            GL.EnableVertexAttribArray(2);
         }
 
         public void Render(Matrix4 view, Matrix4 projection)
