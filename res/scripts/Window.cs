@@ -26,7 +26,7 @@ namespace Voxel_Game.res.scripts
         private const float Gravity = -9.81f;
         private const float JumpStrength = 5.0f;
         private const float PlayerHeight = 2.0f;
-        private const float PlayerRadius = 0.0f;
+        private const float PlayerRadius = 0.1f;
         private const float PlayerSpeed = 2.0f;
         private const float PlayerSpeedSprint = 4.0f;
         

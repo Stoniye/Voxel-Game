@@ -37,16 +37,23 @@ namespace Voxel_Game.res.scripts
 
         private void InitializeBlocks()
         {
+            int dirtHeight;
+            Random rand = new Random();
+            
             for (int x = 0; x < ChunkSize; x++)
             {
                 for (int y = 0; y < ChunkHeight; y++)
                 {
                     for (int z = 0; z < ChunkSize; z++)
                     {
+                        dirtHeight = rand.Next(11, 14);
+                        
                         if (y == 15)
                             _blocks[x, y, z] = 1; //Grass
-                        else if (y <= 14)
+                        else if (y >= dirtHeight && y < 15)
                             _blocks[x, y, z] = 2; //Dirt
+                        else if (y < dirtHeight)
+                            _blocks[x, y, z] = 3; //Stone
                     }
                 }
             }
