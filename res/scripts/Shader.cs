@@ -59,12 +59,6 @@ namespace Voxel_Game.res.scripts
             GL.DeleteShader(fragmentShader);
             GL.DeleteShader(vertexShader);
         }
-        
-        public void Use()
-        {
-            GL.UseProgram(_program);
-        }
-        
         private void Dispose(bool disposing)
         {
             if (!_disposedValue)
@@ -73,7 +67,10 @@ namespace Voxel_Game.res.scripts
                 _disposedValue = true;
             }
         }
-
+        public void Use()
+        {
+            GL.UseProgram(_program);
+        }
         ~Shader()
         {
             if (_disposedValue == false)
@@ -82,7 +79,7 @@ namespace Voxel_Game.res.scripts
             }
         }
         
-        //Uniform Setter
+        //UNIFORM SETTER
         public void SetMatrix4(string name, Matrix4 matrix)
         {
             int location = GL.GetUniformLocation(_program, name);

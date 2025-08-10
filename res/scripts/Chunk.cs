@@ -9,18 +9,15 @@ namespace Voxel_Game.res.scripts
         public const int ChunkHeight = 100;
         
         private readonly Dictionary<Vector2i, Chunk> _neighbors;
-        
         private readonly byte[,,] _blocks;
+        private readonly Vector3 _position;
+        private readonly Shader _shader;
         
         private int _vertexBufferObject;
         private int _vertexArrayObject;
         private int _elementBufferObject;
         private int _texture;
-        
         private int _vertexCount;
-        
-        private readonly Vector3 _position;
-        private readonly Shader _shader;
         
         private float[] _vertices;
         private uint[] _indices;
@@ -34,7 +31,8 @@ namespace Voxel_Game.res.scripts
             InitializeBlocks();
             LoadTexture();
         }
-
+        
+        //PRIVATE FUNCTIONS
         private void InitializeBlocks()
         {
             int dirtHeight;
@@ -58,7 +56,6 @@ namespace Voxel_Game.res.scripts
                 }
             }
         }
-
         private void LoadTexture()
         {
             _texture = GL.GenTexture();
@@ -72,7 +69,6 @@ namespace Voxel_Game.res.scripts
             GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)TextureWrapMode.Repeat);
             GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)TextureWrapMode.Repeat);
         }
-
         private float[] LoadTextureData(string path)
         {
             try
@@ -84,20 +80,18 @@ namespace Voxel_Game.res.scripts
 
                 for (int i = 0; i < rawData.Length / 4; i++)
                 {
-                    data[i * 4 + 0] = rawData[i * 4 + 0] / 255.0f; // R
-                    data[i * 4 + 1] = rawData[i * 4 + 1] / 255.0f; // G
-                    data[i * 4 + 2] = rawData[i * 4 + 2] / 255.0f; // B
-                    data[i * 4 + 3] = rawData[i * 4 + 3] / 255.0f; // A
+                    data[i * 4 + 0] = rawData[i * 4 + 0] / 255.0f; //Red
+                    data[i * 4 + 1] = rawData[i * 4 + 1] / 255.0f; //Green
+                    data[i * 4 + 2] = rawData[i * 4 + 2] / 255.0f; //Blue
+                    data[i * 4 + 3] = rawData[i * 4 + 3] / 255.0f; //Alpha
                 }
                 return data;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Failed to load Texture Atlas: {ex.Message}");
-                return new float[256 * 256 * 4]; //Fallback
+                throw new Exception($"Failed to load Texture Atlas: {ex.Message}");
             }
         }
-
         private void GenerateMesh()
         {
             List<float> vertices = new List<float>();
@@ -112,32 +106,32 @@ namespace Voxel_Game.res.scripts
                     {
                         if (_blocks[x, y, z] == 0) continue; //Skip if block is Air
 
-                        Vector3 blockPos = new Vector3(x, y, z);
+                        Vector3 blockPos = new Vector3(x+0.5f, y, z+0.5f); //Move blocks for 0.5 for no block potion between -0.5 tp 0.5, instead it should be 0 to 1
                         byte blockType = _blocks[x, y, z];
                         
                         Vector2[] texCoords = GetTextureCoords(blockType);
 
-                        // Front face
+                        //Front face
                         if (BlockIsTransparent(x, y, z + 1))
                             AddFace(vertices, indices, blockPos, new Vector3(0, 0, 1), ref index, texCoords);
 
-                        // Back face
+                        //Back face
                         if (BlockIsTransparent(x, y, z - 1))
                             AddFace(vertices, indices, blockPos, new Vector3(0, 0, -1), ref index, texCoords);
 
-                        // Top face
+                        //Top face
                         if (BlockIsTransparent(x, y + 1, z))
                             AddFace(vertices, indices, blockPos, new Vector3(0, 1, 0), ref index, texCoords);
 
-                        // Bottom face
+                        //Bottom face
                         if (BlockIsTransparent(x, y - 1, z))
                             AddFace(vertices, indices, blockPos, new Vector3(0, -1, 0), ref index, texCoords);
 
-                        // Left face
+                        //Left face
                         if (BlockIsTransparent(x - 1, y, z))
                             AddFace(vertices, indices, blockPos, new Vector3(-1, 0, 0), ref index, texCoords);
 
-                        // Right face
+                        //Right face
                         if (BlockIsTransparent(x + 1, y, z))
                             AddFace(vertices, indices, blockPos, new Vector3(1, 0, 0), ref index, texCoords);
                     }
@@ -148,127 +142,45 @@ namespace Voxel_Game.res.scripts
             _indices = indices.ToArray();
             _vertexCount = indices.Count;
         }
-        public void SetNeighbor(Vector2i relativePosition, Chunk neighbor)
-        {
-            _neighbors[relativePosition] = neighbor;
-        }
-        public void RemoveBlock(Vector3i blockPos)
-        {
-            if ((blockPos.X, blockPos.Y, blockPos.Z) is (>= 0 and < ChunkSize, >= 0 and < ChunkHeight, >= 0 and < ChunkSize))
-                _blocks[blockPos.X, blockPos.Y, blockPos.Z] = 0;
-        }
-        public void SetBlock(Vector3i blockPos, byte blockType)
-        {
-            if ((blockPos.X, blockPos.Y, blockPos.Z) is (>= 0 and < ChunkSize, >= 0 and < ChunkHeight, >= 0 and < ChunkSize))
-                _blocks[blockPos.X, blockPos.Y, blockPos.Z] = blockType;
-        }
-        private Vector2[] GetTextureCoords(byte blockType)
-        {
-            int atlasSize = 16;
-            float tileSize = 1.0f / atlasSize;
-            
-            int texIndex = blockType - 1;
-            int texX = texIndex % atlasSize;
-            int texY = texIndex / atlasSize;
-
-            float u = texX * tileSize;
-            float v = texY * tileSize;
-
-            return new Vector2[]
-            {
-                new Vector2(u, v),
-                new Vector2(u + tileSize, v),
-                new Vector2(u + tileSize, v + tileSize),
-                new Vector2(u, v + tileSize)
-            };
-        }
-
-        private bool BlockIsTransparent(int x, int y, int z)
-        {
-            //Check if block in Chunk
-            if ((x, y, z) is (>= 0 and < ChunkSize, >= 0 and < ChunkHeight, >= 0 and < ChunkSize))
-            {
-                return _blocks[x, y, z] == 0;
-            }
-            
-            //Block in other Chunk
-            Vector2i dir = new Vector2i(
-                x >= ChunkSize ? 1 : x < 0 ? -1 : 0,
-                z >= ChunkSize ? 1 : z < 0 ? -1 : 0
-            );
-            Vector3i newBlockPos = new Vector3i(
-                (x % ChunkSize + ChunkSize) % ChunkSize,
-                (y % ChunkHeight + ChunkHeight) % ChunkHeight,
-                (z % ChunkSize + ChunkSize) % ChunkSize
-            );
-                
-            if (_neighbors.TryGetValue(dir, out Chunk? neighborChunk))
-                return neighborChunk.GetBlock(newBlockPos) == 0;
-            
-            return true;
-        }
-
-        public void ReloadChunk(bool reloadNeighbors = true)
-        {
-            //TODO: Only regenerate Changes
-            GenerateMesh();
-            SetupBuffers();
-
-            if (!reloadNeighbors) return;
-            
-            //TODO: Only reload neighbor chunk if block next to it got changed, otherwise it is useless
-            foreach (Chunk neighbor in _neighbors.Values)
-            {
-                neighbor.ReloadChunk(false);
-            }
-        }
-
-        public byte GetBlock(Vector3i blockPos)
-        {
-            if ((blockPos.X, blockPos.Y, blockPos.Z) is (>= 0 and < ChunkSize, >= 0 and < ChunkHeight, >= 0 and < ChunkSize))
-                return _blocks[blockPos.X, blockPos.Y, blockPos.Z];
-            return 0;
-        }
-
         private void AddFace(List<float> vertices, List<uint> indices, Vector3 pos, Vector3 normal, ref uint index, Vector2[] texCoords)
         {
             Vector3[] faceVertices = new Vector3[4];
-            if (normal == new Vector3(0, 0, 1)) // Front
+            if (normal == new Vector3(0, 0, 1)) //Front
             {
                 faceVertices[0] = pos + new Vector3(-0.5f, -0.5f, 0.5f);
                 faceVertices[1] = pos + new Vector3(0.5f, -0.5f, 0.5f);
                 faceVertices[2] = pos + new Vector3(0.5f, 0.5f, 0.5f);
                 faceVertices[3] = pos + new Vector3(-0.5f, 0.5f, 0.5f);
             }
-            else if (normal == new Vector3(0, 0, -1)) // Back
+            else if (normal == new Vector3(0, 0, -1)) //Back
             {
                 faceVertices[0] = pos + new Vector3(0.5f, -0.5f, -0.5f);
                 faceVertices[1] = pos + new Vector3(-0.5f, -0.5f, -0.5f);
                 faceVertices[2] = pos + new Vector3(-0.5f, 0.5f, -0.5f);
                 faceVertices[3] = pos + new Vector3(0.5f, 0.5f, -0.5f);
             }
-            else if (normal == new Vector3(0, 1, 0)) // Top
+            else if (normal == new Vector3(0, 1, 0)) //Top
             {
                 faceVertices[0] = pos + new Vector3(-0.5f, 0.5f, -0.5f);
                 faceVertices[1] = pos + new Vector3(0.5f, 0.5f, -0.5f);
                 faceVertices[2] = pos + new Vector3(0.5f, 0.5f, 0.5f);
                 faceVertices[3] = pos + new Vector3(-0.5f, 0.5f, 0.5f);
             }
-            else if (normal == new Vector3(0, -1, 0)) // Bottom
+            else if (normal == new Vector3(0, -1, 0)) //Bottom
             {
                 faceVertices[0] = pos + new Vector3(-0.5f, -0.5f, 0.5f);
                 faceVertices[1] = pos + new Vector3(0.5f, -0.5f, 0.5f);
                 faceVertices[2] = pos + new Vector3(0.5f, -0.5f, -0.5f);
                 faceVertices[3] = pos + new Vector3(-0.5f, -0.5f, -0.5f);
             }
-            else if (normal == new Vector3(-1, 0, 0)) // Left
+            else if (normal == new Vector3(-1, 0, 0)) //Left
             {
                 faceVertices[0] = pos + new Vector3(-0.5f, -0.5f, -0.5f);
                 faceVertices[1] = pos + new Vector3(-0.5f, -0.5f, 0.5f);
                 faceVertices[2] = pos + new Vector3(-0.5f, 0.5f, 0.5f);
                 faceVertices[3] = pos + new Vector3(-0.5f, 0.5f, -0.5f);
             }
-            else if (normal == new Vector3(1, 0, 0)) // Right
+            else if (normal == new Vector3(1, 0, 0)) //Right
             {
                 faceVertices[0] = pos + new Vector3(0.5f, -0.5f, 0.5f);
                 faceVertices[1] = pos + new Vector3(0.5f, -0.5f, -0.5f);
@@ -293,7 +205,6 @@ namespace Voxel_Game.res.scripts
             indices.Add(index + 0);
             index += 4;
         }
-
         private void SetupBuffers()
         {
             _vertexArrayObject = GL.GenVertexArray();
@@ -314,7 +225,85 @@ namespace Voxel_Game.res.scripts
             GL.VertexAttribPointer(1, 2, VertexAttribPointerType.Float, false, 5 * sizeof(float), 3 * sizeof(float));
             GL.EnableVertexAttribArray(1);
         }
+        private Vector2[] GetTextureCoords(byte blockType)
+        {
+            int atlasSize = 16;
+            float tileSize = 1.0f / atlasSize;
+            
+            int texIndex = blockType - 1;
+            int texX = texIndex % atlasSize;
+            int texY = texIndex / atlasSize;
 
+            float u = texX * tileSize;
+            float v = texY * tileSize;
+
+            return new Vector2[]
+            {
+                new Vector2(u, v),
+                new Vector2(u + tileSize, v),
+                new Vector2(u + tileSize, v + tileSize),
+                new Vector2(u, v + tileSize)
+            };
+        }
+        private bool BlockIsTransparent(int x, int y, int z)
+        {
+            if ((x, y, z) is (>= 0 and < ChunkSize, >= 0 and < ChunkHeight, >= 0 and < ChunkSize))
+            {
+                return _blocks[x, y, z] == 0; //Block in Chunk
+            }
+            
+            //Block in other Chunk
+            Vector2i dir = new Vector2i(
+                x >= ChunkSize ? 1 : x < 0 ? -1 : 0,
+                z >= ChunkSize ? 1 : z < 0 ? -1 : 0
+            );
+            Vector3i blockPos = new Vector3i(
+                (x % ChunkSize + ChunkSize) % ChunkSize,
+                (y % ChunkHeight + ChunkHeight) % ChunkHeight,
+                (z % ChunkSize + ChunkSize) % ChunkSize
+            );
+                
+            if (_neighbors.TryGetValue(dir, out Chunk? neighborChunk))
+                return neighborChunk.GetBlock(blockPos) == 0;
+            
+            return true; //Always fallback to true
+        }
+        
+        //PUBLIC FUNCTIONS
+        public void SetNeighbor(Vector2i dir, Chunk neighbor)
+        {
+            _neighbors[dir] = neighbor;
+        }
+        public void RemoveBlock(Vector3i blockPos)
+        {
+            if ((blockPos.X, blockPos.Y, blockPos.Z) is (>= 0 and < ChunkSize, >= 0 and < ChunkHeight, >= 0 and < ChunkSize))
+                _blocks[blockPos.X, blockPos.Y, blockPos.Z] = 0;
+        }
+        public void SetBlock(Vector3i blockPos, byte blockType)
+        {
+            if ((blockPos.X, blockPos.Y, blockPos.Z) is (>= 0 and < ChunkSize, >= 0 and < ChunkHeight, >= 0 and < ChunkSize))
+                _blocks[blockPos.X, blockPos.Y, blockPos.Z] = blockType;
+        }
+        public byte GetBlock(Vector3i blockPos)
+        {
+            if ((blockPos.X, blockPos.Y, blockPos.Z) is (>= 0 and < ChunkSize, >= 0 and < ChunkHeight, >= 0 and < ChunkSize))
+                return _blocks[blockPos.X, blockPos.Y, blockPos.Z];
+            return 0;
+        }
+        public void ReloadChunk(bool reloadNeighbors = true)
+        {
+            //TODO: Only regenerate Changes
+            GenerateMesh();
+            SetupBuffers();
+
+            if (!reloadNeighbors) return;
+            
+            //TODO: Only reload neighbor chunk if block next to it got changed, otherwise it is not necessarily
+            foreach (Chunk neighbor in _neighbors.Values)
+            {
+                neighbor.ReloadChunk(false);
+            }
+        }
         public void Render(Matrix4 view, Matrix4 projection)
         {
             _shader.Use();
@@ -330,7 +319,6 @@ namespace Voxel_Game.res.scripts
             GL.BindVertexArray(_vertexArrayObject);
             GL.DrawElements(PrimitiveType.Triangles, _vertexCount, DrawElementsType.UnsignedInt, 0);
         }
-
         public void Dispose()
         {
             GL.DeleteBuffer(_vertexBufferObject);
