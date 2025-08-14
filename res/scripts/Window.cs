@@ -235,7 +235,7 @@ namespace Voxel_Game.res.scripts
         }
         private bool IsGrounded()
         {
-            Vector3 playerFeetPos = _playerPos - new Vector3(0.0f, PlayerHeight / 2.0f + 0.5f, 0.0f);
+            Vector3 playerFeetPos = _playerPos - new Vector3(0.0f, PlayerHeight / 2.0f, 0.0f);
             Vector3i playerFeetPosInt = new Vector3i((int)Math.Floor(playerFeetPos.X), (int)Math.Floor(playerFeetPos.Y), (int)Math.Floor(playerFeetPos.Z));
             return IsBlockAt(playerFeetPosInt);
         }

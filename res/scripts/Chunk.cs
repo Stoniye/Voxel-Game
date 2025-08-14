@@ -9,6 +9,7 @@ namespace Voxel_Game.res.scripts
         public const int ChunkHeight = 100;
         
         private readonly Dictionary<Vector2i, Chunk> _neighbors;
+        private readonly HashSet<Vector3i> _modifiedBlocks = new HashSet<Vector3i>();
         private readonly byte[,,] _blocks;
         private readonly Vector3 _position;
         private readonly Shader _shader;
@@ -32,7 +33,7 @@ namespace Voxel_Game.res.scripts
             LoadTexture();
         }
         
-        //PRIVATE FUNCTIONS
+        //PRIVATE METHOD
         private void InitializeBlocks()
         {
             int dirtHeight;
@@ -52,6 +53,8 @@ namespace Voxel_Game.res.scripts
                             _blocks[x, y, z] = 2; //Dirt
                         else if (y < dirtHeight)
                             _blocks[x, y, z] = 3; //Stone
+                        
+                        _modifiedBlocks.Add(new Vector3i(x, y, z));
                     }
                 }
             }
@@ -91,56 +94,6 @@ namespace Voxel_Game.res.scripts
             {
                 throw new Exception($"Failed to load Texture Atlas: {ex.Message}");
             }
-        }
-        private void GenerateMesh()
-        {
-            List<float> vertices = new List<float>();
-            List<uint> indices = new List<uint>();
-            uint index = 0;
-
-            for (int x = 0; x < ChunkSize; x++)
-            {
-                for (int y = 0; y < ChunkHeight; y++)
-                {
-                    for (int z = 0; z < ChunkSize; z++)
-                    {
-                        if (_blocks[x, y, z] == 0) continue; //Skip if block is Air
-
-                        Vector3 blockPos = new Vector3(x+0.5f, y, z+0.5f); //Move blocks for 0.5 for no block potion between -0.5 tp 0.5, instead it should be 0 to 1
-                        byte blockType = _blocks[x, y, z];
-                        
-                        Vector2[] texCoords = GetTextureCoords(blockType);
-
-                        //Front face
-                        if (BlockIsTransparent(x, y, z + 1))
-                            AddFace(vertices, indices, blockPos, new Vector3(0, 0, 1), ref index, texCoords);
-
-                        //Back face
-                        if (BlockIsTransparent(x, y, z - 1))
-                            AddFace(vertices, indices, blockPos, new Vector3(0, 0, -1), ref index, texCoords);
-
-                        //Top face
-                        if (BlockIsTransparent(x, y + 1, z))
-                            AddFace(vertices, indices, blockPos, new Vector3(0, 1, 0), ref index, texCoords);
-
-                        //Bottom face
-                        if (BlockIsTransparent(x, y - 1, z))
-                            AddFace(vertices, indices, blockPos, new Vector3(0, -1, 0), ref index, texCoords);
-
-                        //Left face
-                        if (BlockIsTransparent(x - 1, y, z))
-                            AddFace(vertices, indices, blockPos, new Vector3(-1, 0, 0), ref index, texCoords);
-
-                        //Right face
-                        if (BlockIsTransparent(x + 1, y, z))
-                            AddFace(vertices, indices, blockPos, new Vector3(1, 0, 0), ref index, texCoords);
-                    }
-                }
-            }
-
-            _vertices = vertices.ToArray();
-            _indices = indices.ToArray();
-            _vertexCount = indices.Count;
         }
         private void AddFace(List<float> vertices, List<uint> indices, Vector3 pos, Vector3 normal, ref uint index, Vector2[] texCoords)
         {
@@ -269,7 +222,7 @@ namespace Voxel_Game.res.scripts
             return true; //Always fallback to true
         }
         
-        //PUBLIC FUNCTIONS
+        //PUBLIC METHODS
         public void SetNeighbor(Vector2i dir, Chunk neighbor)
         {
             _neighbors[dir] = neighbor;
@@ -277,12 +230,18 @@ namespace Voxel_Game.res.scripts
         public void RemoveBlock(Vector3i blockPos)
         {
             if ((blockPos.X, blockPos.Y, blockPos.Z) is (>= 0 and < ChunkSize, >= 0 and < ChunkHeight, >= 0 and < ChunkSize))
+            {
                 _blocks[blockPos.X, blockPos.Y, blockPos.Z] = 0;
+                _modifiedBlocks.Add(blockPos);
+            }
         }
         public void SetBlock(Vector3i blockPos, byte blockType)
         {
             if ((blockPos.X, blockPos.Y, blockPos.Z) is (>= 0 and < ChunkSize, >= 0 and < ChunkHeight, >= 0 and < ChunkSize))
+            {
                 _blocks[blockPos.X, blockPos.Y, blockPos.Z] = blockType;
+                _modifiedBlocks.Add(blockPos);
+            }
         }
         public byte GetBlock(Vector3i blockPos)
         {
@@ -292,11 +251,71 @@ namespace Voxel_Game.res.scripts
         }
         public void ReloadChunk(bool reloadNeighbors = true)
         {
-            //TODO: Only regenerate Changes
-            GenerateMesh();
-            SetupBuffers();
+            if (_modifiedBlocks.Count == 0) return;
 
-            if (!reloadNeighbors) return;
+            List<float> vertices = new List<float>(_vertices ?? Array.Empty<float>());
+            List<uint> indices = new List<uint>(_indices ?? Array.Empty<uint>());
+            uint index = (uint)(vertices.Count / 5);
+            
+            HashSet<Vector3i> affectedBlocks = new HashSet<Vector3i>();
+            foreach (var blockPos in _modifiedBlocks)
+            {
+                affectedBlocks.Add(blockPos);
+                for (int dx = -1; dx <= 1; dx++)
+                for (int dy = -1; dy <= 1; dy++)
+                for (int dz = -1; dz <= 1; dz++)
+                {
+                    if (dx == 0 && dy == 0 && dz == 0) continue;
+                    Vector3i neighborPos = new Vector3i(blockPos.X + dx, blockPos.Y + dy, blockPos.Z + dz);
+                    if ((neighborPos.X, neighborPos.Y, neighborPos.Z) is (>= 0 and < ChunkSize, >= 0 and < ChunkHeight, >= 0 and < ChunkSize))
+                    {
+                        affectedBlocks.Add(neighborPos);
+                    }
+                }
+            }
+
+            vertices.Clear();
+            indices.Clear();
+            index = 0;
+            
+            foreach (var blockPos in affectedBlocks)
+            {
+                if (_blocks[blockPos.X, blockPos.Y, blockPos.Z] == 0) continue; //Skip if block is Air
+
+                Vector3 pos = new Vector3(blockPos.X + 0.5f, blockPos.Y, blockPos.Z + 0.5f);
+                byte blockType = _blocks[blockPos.X, blockPos.Y, blockPos.Z];
+                Vector2[] texCoords = GetTextureCoords(blockType);
+                
+                //Front face
+                if (BlockIsTransparent(blockPos.X, blockPos.Y, blockPos.Z + 1))
+                    AddFace(vertices, indices, blockPos, new Vector3(0, 0, 1), ref index, texCoords);
+
+                //Back face
+                if (BlockIsTransparent(blockPos.X, blockPos.Y, blockPos.Z - 1))
+                    AddFace(vertices, indices, blockPos, new Vector3(0, 0, -1), ref index, texCoords);
+
+                //Top face
+                if (BlockIsTransparent(blockPos.X, blockPos.Y + 1, blockPos.Z))
+                    AddFace(vertices, indices, blockPos, new Vector3(0, 1, 0), ref index, texCoords);
+
+                //Bottom face
+                if (BlockIsTransparent(blockPos.X, blockPos.Y - 1, blockPos.Z))
+                    AddFace(vertices, indices, blockPos, new Vector3(0, -1, 0), ref index, texCoords);
+
+                //Left face
+                if (BlockIsTransparent(blockPos.X - 1, blockPos.Y, blockPos.Z))
+                    AddFace(vertices, indices, blockPos, new Vector3(-1, 0, 0), ref index, texCoords);
+
+                //Right face
+                if (BlockIsTransparent(blockPos.X + 1, blockPos.Y, blockPos.Z))
+                    AddFace(vertices, indices, blockPos, new Vector3(1, 0, 0), ref index, texCoords);
+            }
+
+            _vertices = vertices.ToArray();
+            _indices = indices.ToArray();
+            _vertexCount = indices.Count;
+            
+            SetupBuffers();
             
             //TODO: Only reload neighbor chunk if block next to it got changed, otherwise it is not necessarily
             foreach (Chunk neighbor in _neighbors.Values)
